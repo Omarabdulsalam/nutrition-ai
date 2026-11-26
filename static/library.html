@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NutriAI – Meal library</title>
+<style>
+  :root { --bg:#f5f6f3; --card:#fff; --ink:#1d2420; --muted:#6b756f; --accent:#2f7d4f; --accent2:#e8efe9;
+          --line:#e2e6e1; --warn:#9a5b00; --warnbg:#fff5e5; --bad:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
+  header { display:flex; align-items:center; gap:12px; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0; color:var(--accent); }
+  header a { color:var(--accent); font-weight:600; text-decoration:none; }
+  .layout { display:grid; grid-template-columns:300px 1fr; min-height:calc(100vh - 54px); }
+  aside { background:var(--card); border-right:1px solid var(--line); padding:14px; }
+  aside ul { list-style:none; padding:0; margin:10px 0 0; }
+  aside li { padding:8px 10px; border-radius:8px; cursor:pointer; }
+  aside li:hover { background:var(--accent2); }
+  aside li.on { background:var(--accent); color:#fff; }
+  aside li small { display:block; opacity:.7; }
+  main { padding:20px; max-width:1200px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  label.inline { flex-direction:row; align-items:center; gap:6px; font-size:14px; color:var(--ink); }
+  input, select { font:inherit; color:var(--ink); padding:7px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; width:100%; }
+  input[type=checkbox] { width:auto; }
+  button { font:inherit; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; background:var(--accent2); color:var(--accent); font-weight:600; }
+  button.primary { background:var(--accent); color:#fff; }
+  button.danger { background:#fbeaea; color:var(--bad); }
+  .x { background:none; color:var(--muted); padding:2px 6px; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--muted); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:4px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  td input { padding:5px 6px; }
+  td.n input { width:70px; }
+  .match { font-size:11px; color:var(--muted); margin-top:2px; }
+  .match.bad { color:var(--bad); }
+  .tot { background:var(--bg); border-radius:8px; padding:10px; margin-top:10px; }
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:var(--accent2); color:var(--accent); margin-right:3px; }
+  li.on .pill { background:rgba(255,255,255,.25); color:#fff; }
+  .scroll { overflow-x:auto; }
+  @media (max-width:800px){ .layout{grid-template-columns:1fr;} aside{border-right:0;border-bottom:1px solid var(--line);} .grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>NutriAI</h1><span class="muted">Meal library</span>
+  <a href="/">← Back to clients</a>
+</header>
+
+<div class="layout">
+  <aside>
+    <button class="primary" style="width:100%" onclick="newMeal()">+ New meal</button>
+    <div class="row" style="margin-top:10px;gap:6px">
+      <input id="search" placeholder="Search meals…" oninput="renderList()" style="flex:1" />
+      <select id="slotFilter" onchange="renderList()" style="width:auto">
+        <option value="">All</option><option value="breakfast">Breakfast</option><option value="snack">Snack</option>
+        <option value="lunch">Lunch</option><option value="dinner">Dinner</option>
+      </select>
+    </div>
+    <p class="muted" id="count" style="margin:8px 2px 0"></p>
+    <ul id="list"></ul>
+  </aside>
+  <main id="main">
+    <div class="card">
+      <h2>How the meal library works</h2>
+      <p>When you click <b>Generate plan</b> for a client, the app builds the plan from these meals. For each day it picks
+        one meal per slot (breakfast, snacks, lunch, dinner) and:</p>
+      <ul>
+        <li>skips meals that contain the client's <b>allergies</b> or <b>dislikes</b> (it checks every food name),</li>
+        <li>skips meals tagged <b>salty</b> for high blood pressure and <b>sugary</b> for diabetes, and uses only
+          <b>vegetarian/vegan</b> meals when the client's notes say so,</li>
+        <li>doesn't repeat a meal on back-to-back days, and prefers meals whose protein fits the target,</li>
+        <li>scales portions so each meal gets its share of the day's calories.</li>
+      </ul>
+      <p class="muted">The more meals you add, the more varied the plans. Write the grams for one normal portion; the planner scales them.
+        Each food needs a USDA search term in English (e.g. "chicken breast cooked roasted"). Check the match shown under it.</p>
+    </div>
+  </main>
+</div>
+
+<datalist id="knownFoods"></datalist>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const SLOTS = ["breakfast","snack","lunch","dinner"];
+const TAGS = [["vegetarian","Vegetarian"],["vegan","Vegan"],["high_sodium","Salty (skipped for high blood pressure)"],
+              ["high_sugar","Sugary (skipped for diabetes)"]];
+let meals = [], meal = null, known = {};
+const usdaCache = {};
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 204) return null;
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  return data;
+}
+
+async function load() {
+  meals = await api("/api/meals");
+  // foods used in any meal, for auto-fill when typing a food name
+  known = {};
+  meals.forEach(m => m.items.forEach(it => { known[it.food.toLowerCase()] = it; }));
+  $("#knownFoods").innerHTML = Object.values(known).map(it => `<option value="${esc(it.food)}">`).join("");
+  renderList();
+}
+
+function renderList() {
+  const q = $("#search").value.toLowerCase(), slot = $("#slotFilter").value;
+  const shown = meals.filter(m => (!slot || m.slots.includes(slot)) &&
+    (m.name.toLowerCase().includes(q) || (m.name_ar || "").includes(q)));
+  $("#count").textContent = `${shown.length} of ${meals.length} meals`;
+  $("#list").innerHTML = shown.map(m => `
+    <li class="${meal && meal.id === m.id ? "on" : ""}" onclick="openMeal(${m.id})">${esc(m.name)}
+      <small dir="auto">${esc(m.name_ar || "")}</small>
+      <small>${m.slots.map(s => `<span class="pill">${s}</span>`).join("")}</small></li>`).join("")
+    || `<li class="muted">No meals</li>`;
+}
+
+function blankItem() { return { food:"", food_ar:"", search_term:"", grams:"", unit:"", unit_ar:"", unit_g:"" }; }
+
+function newMeal() { meal = { name:"", name_ar:"", slots:[], tags:[], items:[blankItem(), blankItem(), blankItem()] }; render(); renderList(); }
+
+function openMeal(id) {
+  const m = meals.find(m => m.id === id);
+  meal = JSON.parse(JSON.stringify(m)); render(); renderList();
+}
+
+function duplicate() {
+  readHeader();
+  meal ={ ...JSON.parse(JSON.stringify(meal)), id: undefined, name: meal.name + " (copy)" };
+  render(); renderList();
+}
+
+function render() {
+  $("#main").innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>${meal.id ? "Edit meal" : "New meal"}</h2>
+        <div class="row">
+          ${meal.id ? `<button onclick="duplicate()">Duplicate</button><button class="danger" onclick="removeMeal()">Delete</button>` : ""}
+          <button class="primary" onclick="saveMeal()">Save meal</button></div></div>
+      <div class="grid">
+        <label>Meal name (English)<input id="m_name" value="${esc(meal.name)}" /></label>
+        <label>Meal name (Arabic, optional)<input id="m_name_ar" dir="rtl" value="${esc(meal.name_ar || "")}" /></label>
+      </div>
+      <p class="muted" style="margin:14px 0 6px">Can be served as:</p>
+      <div class="row">${SLOTS.map(s => `<label class="inline"><input type="checkbox" class="slot" value="${s}" ${meal.slots.includes(s) ? "checked" : ""}/> ${s}</label>`).join("")}</div>
+      <p class="muted" style="margin:14px 0 6px">Tags:</p>
+      <div class="row">${TAGS.map(([t, l]) => `<label class="inline"><input type="checkbox" class="tag" value="${t}" ${meal.tags.includes(t) ? "checked" : ""}/> ${l}</label>`).join("")}</div>
+    </div>
+    <div class="card">
+      <h2>Foods in this meal (one normal portion)</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Food (English)</th><th>Food (Arabic)</th><th>USDA search term</th><th>Grams</th>
+          <th>Measure <span title="Optional: lets plans say '2 eggs' instead of '100 g'">ⓘ</span></th><th>Measure (Arabic)</th><th>g per measure</th><th></th></tr></thead>
+        <tbody id="items"></tbody>
+      </table></div>
+      <button class="x" onclick="addItem()" style="margin-top:6px">+ add food</button>
+      <div class="tot" id="totals"></div>
+      <p class="muted">Tip: "Measure" is optional. Example: Measure = <i>egg</i>, Arabic = <i>بيضة</i>, g per measure = <i>50</i>,
+        so the plan shows "2 eggs" instead of "100 g". Typing a food you used before fills in the rest.</p>
+    </div>`;
+  renderItems();
+}
+
+function renderItems() {
+  $("#items").innerHTML = meal.items.map((it, i) => `<tr>
+    <td><input list="knownFoods" value="${esc(it.food)}" onchange="setFood(${i}, this.value)" /></td>
+    <td><input dir="rtl" value="${esc(it.food_ar || "")}" onchange="meal.items[${i}].food_ar=this.value" /></td>
+    <td><input value="${esc(it.search_term)}" onchange="setTerm(${i}, this.value)" />
+        <div class="match" id="match${i}"></div></td>
+    <td class="n"><input type="number" min="0" value="${it.grams ?? ""}" onchange="meal.items[${i}].grams=+this.value; showTotals()" /></td>
+    <td><input value="${esc(it.unit || "")}" onchange="meal.items[${i}].unit=this.value" style="width:110px" /></td>
+    <td><input dir="rtl" value="${esc(it.unit_ar || "")}" onchange="meal.items[${i}].unit_ar=this.value" style="width:110px" /></td>
+    <td class="n"><input type="number" min="0" step="0.1" value="${it.unit_g ?? ""}" onchange="meal.items[${i}].unit_g=this.value" /></td>
+    <td><button class="x" title="Remove" onclick="meal.items.splice(${i},1); renderItems()">✕</button></td></tr>`).join("");
+  meal.items.forEach((it, i) => checkTerm(i));
+}
+
+function addItem() { readHeader(); meal.items.push(blankItem()); renderItems(); }
+
+function setFood(i, v) {
+  const it = meal.items[i]; it.food = v;
+  const k = known[v.trim().toLowerCase()];
+  if (k) {   // fill blanks from the same food in another meal
+    ["food_ar","search_term","unit","unit_ar","unit_g"].forEach(f => { if (!it[f] && k[f]) it[f] = k[f]; });
+    if (!it.grams) it.grams = k.grams;
+    readHeader(); renderItems();
+  }
+}
+
+function setTerm(i, v) { meal.items[i].search_term = v.trim(); checkTerm(i); }
+
+async function lookup(term) {
+  term = term.trim().toLowerCase();
+  if (!(term in usdaCache)) {
+    usdaCache[term] = api(`/api/food?q=${encodeURIComponent(term)}`).catch(() => null);
+  }
+  return usdaCache[term];
+}
+
+async function checkTerm(i) {
+  const it = meal.items[i], el = document.getElementById("match" + i);
+  if (!el) return;
+  if (!it.search_term) { el.textContent = ""; showTotals(); return; }
+  el.textContent = "checking…"; el.className = "match";
+  const f = await lookup(it.search_term);
+  if (!document.getElementById("match" + i)) return;
+  if (f) { el.textContent = `USDA: ${f.description} · ${Math.round(f.per_100g.calories ?? 0)} kcal/100 g`; }
+  else { el.textContent = "No USDA match. Try a simpler term"; el.className = "match bad"; }
+  showTotals();
+}
+
+async function showTotals() {
+  const el = $("#totals"); if (!el) return;
+  const t = { calories:0, protein_g:0, carbs_g:0, fat_g:0 };
+  for (const it of meal.items) {
+    if (!it.search_term || !it.grams) continue;
+    const f = await lookup(it.search_term);
+    if (!f) continue;
+    for (const k in t) t[k] += (f.per_100g[k] || 0) * it.grams / 100;
+  }
+  el.innerHTML = `<b>This portion:</b> ${Math.round(t.calories)} kcal · protein ${Math.round(t.protein_g)} g ·
+    carbs ${Math.round(t.carbs_g)} g · fat ${Math.round(t.fat_g)} g
+    <span class="muted">(the planner scales it to each client's targets)</span>`;
+}
+
+function readHeader() {
+  meal.name = $("#m_name").value.trim();
+  meal.name_ar = $("#m_name_ar").value.trim();
+  meal.slots = [...document.querySelectorAll(".slot:checked")].map(e => e.value);
+  meal.tags = [...document.querySelectorAll(".tag:checked")].map(e => e.value);
+}
+
+async function saveMeal() {
+  readHeader();
+  const body = { ...meal, items: meal.items.filter(it => it.search_term) };
+  try {
+    meal = meal.id ? await api(`/api/meals/${meal.id}`, { method:"PUT", body })
+                   : await api("/api/meals", { method:"POST", body });
+    await load(); render(); toast("Meal saved");
+  } catch (e) { alert(e.message); }
+}
+
+async function removeMeal() {
+  if (!confirm(`Delete "${meal.name}" from the library? Existing plans keep it.`)) return;
+  await api(`/api/meals/${meal.id}`, { method:"DELETE" });
+  meal = null; await load();
+  $("#main").innerHTML = `<div class="empty">Meal deleted.</div>`;
+}
+
+function toast(msg) {
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.cssText = "position:fixed;bottom:20px;right:20px;background:#1d2420;color:#fff;padding:10px 16px;border-radius:8px;z-index:9";
+  document.body.appendChild(t); setTimeout(() => t.remove(), 1800);
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NutriAI – Diet Planner</title>
+<style>
+  :root { --bg:#f5f6f3; --card:#fff; --ink:#1d2420; --muted:#6b756f; --accent:#2f7d4f; --accent2:#e8efe9;
+          --line:#e2e6e1; --warn:#9a5b00; --warnbg:#fff5e5; --bad:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
+  header { display:flex; align-items:center; gap:12px; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0; color:var(--accent); }
+  header .sp { flex:1; }
+  header input { width:220px; }
+  .layout { display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 54px); }
+  aside { background:var(--card); border-right:1px solid var(--line); padding:14px; }
+  aside ul { list-style:none; padding:0; margin:10px 0 0; }
+  aside li { padding:9px 10px; border-radius:8px; cursor:pointer; }
+  aside li:hover { background:var(--accent2); }
+  aside li.on { background:var(--accent); color:#fff; }
+  aside li small { display:block; opacity:.7; }
+  main { padding:20px; max-width:1100px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .grid .wide { grid-column:span 2; }
+  .grid .full { grid-column:1/-1; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  input, select, textarea { font:inherit; color:var(--ink); padding:7px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  textarea { resize:vertical; min-height:38px; }
+  button { font:inherit; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; background:var(--accent2); color:var(--accent); font-weight:600; }
+  button.primary { background:var(--accent); color:#fff; }
+  button.danger { background:#fbeaea; color:var(--bad); }
+  button:disabled { opacity:.6; cursor:wait; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:12px; }
+  .stat { background:var(--bg); border-radius:10px; padding:10px; text-align:center; }
+  .stat b { display:block; font-size:20px; }
+  .stat span { color:var(--muted); font-size:12px; }
+  .warn { background:var(--warnbg); color:var(--warn); border-radius:8px; padding:8px 10px; margin:6px 0; font-size:13px; }
+  .muted { color:var(--muted); }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .tabs button.on { background:var(--accent); color:#fff; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  td input.g { width:72px; }
+  .meal-h { display:flex; justify-content:space-between; align-items:baseline; margin:16px 0 4px; }
+  .meal-h b { font-size:15px; }
+  .matched { font-size:11px; color:var(--muted); }
+  .flag { font-size:11px; color:var(--bad); font-weight:600; }
+  .x { background:none; color:var(--muted); padding:2px 6px; }
+  .bar { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:12px; }
+  .bar div { background:var(--bg); border-radius:8px; padding:8px; font-size:12px; }
+  .ok { color:var(--accent); } .off { color:var(--bad); }
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  #print { display:none; }
+  @media (max-width:800px){ .layout{grid-template-columns:1fr;} aside{border-right:0;border-bottom:1px solid var(--line);} .grid{grid-template-columns:1fr 1fr;} .stats{grid-template-columns:repeat(2,1fr);} header input{width:120px;} }
+
+  @media print {
+    body { background:#fff; font-size:12px; }
+    header, .layout { display:none !important; }
+    #print { display:block; padding:0 8px; }
+    #print h1 { font-size:20px; margin:0; color:var(--accent); }
+    #print h2 { font-size:15px; margin:18px 0 6px; border-bottom:2px solid var(--accent); padding-bottom:4px; page-break-after:avoid; }
+    #print h3 { font-size:13px; margin:10px 0 2px; }
+    #print .day { page-break-inside:avoid; }
+    #print table td, #print table th { padding:3px 4px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>NutriAI</h1><span class="muted">Diet planner</span>
+  <a href="/library" style="color:var(--accent);font-weight:600;text-decoration:none;margin-left:12px">Meal library</a>
+  <a href="/quick" style="color:var(--accent);font-weight:600;text-decoration:none">Quick meal check</a>
+  <span class="sp"></span>
+  <input id="clinic" placeholder="Clinic / specialist name (for printouts)" />
+</header>
+
+<div class="layout">
+  <aside>
+    <button class="primary" style="width:100%" onclick="newClient()">+ New client</button>
+    <input id="search" placeholder="Search clients…" style="width:100%;margin-top:10px" oninput="renderClients()" />
+    <ul id="clients"></ul>
+  </aside>
+  <main id="main"><div class="empty">Select a client or create a new one.</div></main>
+</div>
+
+<div id="print"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const KEYS = ["calories","protein_g","carbs_g","fat_g","fiber_g","sugar_g","sodium_mg"];
+let clients = [], client = null, assessment = null, plans = [], plan = null, dayIdx = 0, dirty = false;
+
+// clinic name: per-browser convenience only
+try { $("#clinic").value = localStorage.getItem("clinic") || ""; } catch {}
+$("#clinic").oninput = e => { try { localStorage.setItem("clinic", e.target.value); } catch {} };
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 204) return null;
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  return data;
+}
+
+// ---------------- clients ----------------
+async function loadClients() { clients = await api("/api/clients"); renderClients(); }
+
+function renderClients() {
+  const q = $("#search").value.toLowerCase();
+  $("#clients").innerHTML = clients.filter(c => c.name.toLowerCase().includes(q)).map(c => `
+    <li class="${client && client.id === c.id ? "on" : ""}" onclick="openClient(${c.id})">
+      ${esc(c.name)}<small>${esc(c.goal || "")} · ${c.weight_kg || "?"} kg</small></li>`).join("")
+    || `<li class="muted">No clients yet</li>`;
+}
+
+const FIELDS = [
+  ["name","Full name","text","wide"], ["phone","Phone","text"], ["sex","Sex","select:male,female"],
+  ["age","Age","number"], ["height_cm","Height (cm)","number"], ["weight_kg","Weight (kg)","number"], ["body_fat_pct","Body fat % (optional)","number"],
+  ["activity","Activity","select:sedentary,light,moderate,active,very_active"], ["goal","Goal","select:lose,maintain,gain"],
+  ["rate_kg_week","Rate (kg/week)","number"], ["meals_per_day","Meals per day","select:3,4,5,6"],
+  ["protein_g_per_kg","Protein g/kg (optional)","number"], ["fat_pct","Fat % of kcal (optional)","number"],
+  ["plan_language","Plan language","select:English,Arabic,French"], ["budget","Budget","select:low,moderate,high"],
+  ["allergies","Allergies (comma separated)","text","wide"], ["dislikes","Dislikes","text","wide"],
+  ["cuisine","Cuisine preferences","text","wide"], ["pregnant_or_breastfeeding","Pregnant / breastfeeding","select:,yes"],
+  ["medical_notes","Medical conditions & medications","textarea","full"],
+  ["specialist_notes","Plan instructions (a reminder for you, not applied automatically; 'vegetarian' or 'vegan' here filters meals)","textarea","full"],
+];
+
+function newClient() {
+  client = { sex:"female", activity:"light", goal:"lose", meals_per_day:"4", plan_language:"English", budget:"moderate",
+             cuisine:"Lebanese / Mediterranean" };
+  plans = []; plan = null; assessment = null; render(); renderClients();
+}
+
+async function openClient(id) {
+  if (dirty && !confirm("Discard unsaved plan edits?")) return;
+  client = await api(`/api/clients/${id}`); plan = null; dirty = false;
+  plans = await api(`/api/clients/${id}/plans`);
+  render(); renderClients(); refreshCalc();
+}
+
+function formData() {
+  const d = { ...client };
+  FIELDS.forEach(([k]) => { const el = document.getElementById("f_" + k); if (el) d[k] = el.value.trim(); });
+  return d;
+}
+
+async function saveClient() {
+  const d = formData();
+  try {
+    client = d.id ? await api(`/api/clients/${d.id}`, { method:"PUT", body:d }) : await api("/api/clients", { method:"POST", body:d });
+    await loadClients(); render(); refreshCalc(); toast("Client saved");
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteClient() {
+  if (!confirm(`Delete ${client.name} and all their plans?`)) return;
+  await api(`/api/clients/${client.id}`, { method:"DELETE" });
+  client = null; plan = null; await loadClients(); $("#main").innerHTML = `<div class="empty">Client deleted.</div>`;
+}
+
+// ---------------- assessment ----------------
+let calcTimer;
+function refreshCalc() {
+  clearTimeout(calcTimer);
+  calcTimer = setTimeout(async () => {
+    const d = formData();
+    try { assessment = await api("/api/calc", { method:"POST", body:d }); }
+    catch (e) { assessment = { error: e.message }; }
+    renderAssessment();
+  }, 300);
+}
+
+function renderAssessment() {
+  const el = $("#assess"); if (!el) return;
+  const a = assessment;
+  if (!a) { el.innerHTML = `<p class="muted">Fill in sex, age, height and weight.</p>`; return; }
+  if (a.error) { el.innerHTML = `<p class="muted">${esc(a.error)}</p>`; return; }
+  const t = a.targets;
+  el.innerHTML = `
+    <div class="stats">
+      <div class="stat"><b>${a.bmi}</b><span>BMI · ${a.bmi_category}</span></div>
+      <div class="stat"><b>${a.bmr}</b><span>BMR kcal (${a.bmr_formula})</span></div>
+      <div class="stat"><b>${a.tdee}</b><span>TDEE kcal (×${a.activity_factor})</span></div>
+      <div class="stat"><b>${a.healthy_weight_range_kg.join("–")}</b><span>Healthy weight kg</span></div>
+      <div class="stat"><b>${a.water_l} L</b><span>Water / day</span></div>
+    </div>
+    <p class="muted">Daily targets. Override any value before generating.
+      ${a.expected_weekly_change_kg != null ? `Expected change: <b>${a.expected_weekly_change_kg > 0 ? "+" : ""}${a.expected_weekly_change_kg} kg/week</b>.` : ""}
+      Split P/C/F: ${a.macro_split_pct.protein}/${a.macro_split_pct.carbs}/${a.macro_split_pct.fat}%</p>
+    <div class="grid">
+      ${["calories","protein_g","carbs_g","fat_g"].map(k => `
+        <label>${k.replace("_g"," (g)")}<input id="t_${k}" type="number" placeholder="${t[k]}" /></label>`).join("")}
+    </div>
+    ${a.warnings.map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}`;
+}
+
+// ---------------- plans ----------------
+async function generate() {
+  if (!client.id) { alert("Save the client first."); return; }
+  // read overrides before anything re-renders the page
+  const targets = {};
+  ["calories","protein_g","carbs_g","fat_g"].forEach(k => { const v = $("#t_" + k)?.value; if (v) targets[k] = +v; });
+  const days = +$("#days").value, language = $("#f_plan_language").value;
+  const btn = $("#genBtn"); btn.disabled = true;
+  btn.textContent = `Building ${days}-day plan…`;
+  try {
+    client = await api(`/api/clients/${client.id}`, { method:"PUT", body:formData() });
+    plan = await api(`/api/clients/${client.id}/plans`, { method:"POST", body:{ days, language, targets } });
+    plans = await api(`/api/clients/${client.id}/plans`); dayIdx = 0; dirty = false;
+    render(); document.getElementById("planCard")?.scrollIntoView({ behavior:"smooth" });
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.textContent = "Generate plan"; }
+}
+
+async function openPlan(id) {
+  if (dirty && !confirm("Discard unsaved plan edits?")) return;
+  plan = await api(`/api/plans/${id}`); dayIdx = 0; dirty = false; render();
+  document.getElementById("planCard")?.scrollIntoView({ behavior:"smooth" });
+}
+
+async function deletePlan(id) {
+  if (!confirm("Delete this plan?")) return;
+  await api(`/api/plans/${id}`, { method:"DELETE" });
+  if (plan && plan.id === id) plan = null;
+  plans = await api(`/api/clients/${client.id}/plans`); render();
+}
+
+async function savePlan() {
+  try { plan = await api(`/api/plans/${plan.id}`, { method:"PUT", body:plan }); dirty = false; render(); toast("Plan saved"); }
+  catch (e) { alert(e.message); }
+}
+
+function sumRows(rows) {
+  const t = Object.fromEntries(KEYS.map(k => [k, 0]));
+  rows.forEach(r => r && KEYS.forEach(k => { if (r[k] != null) t[k] += r[k]; }));
+  KEYS.forEach(k => t[k] = Math.round(t[k] * 10) / 10);
+  return t;
+}
+function recompute() {
+  plan.days.forEach(d => {
+    d.meals.forEach(m => {
+      m.items.forEach(it => {
+        it.nutrients = it.per_100g ? Object.fromEntries(KEYS.map(k => [k, it.per_100g[k] == null ? null : Math.round(it.per_100g[k] * it.grams / 10) / 10])) : null;
+      });
+      m.totals = sumRows(m.items.map(i => i.nutrients));
+    });
+    d.totals = sumRows(d.meals.map(m => m.totals));
+  });
+}
+
+// same rules as planner.household() on the server: "2 eggs", "1½ small pitas", "120 g"
+function household(it) {
+  const ar = plan.language === "Arabic", g = ar ? "غ" : "g";
+  if (!it.unit_g || !it.unit) return `${it.grams} ${g}`;
+  let q = it.grams / it.unit_g;
+  q = q < 3 ? Math.round(q * 2) / 2 : Math.round(q);
+  if (q <= 0) return `${it.grams} ${g}`;
+  const whole = Math.floor(q), half = q % 1 >= .5;
+  const qty = (whole ? String(whole) : "") + (half ? "½" : "");
+  let unit = ar && it.unit_ar ? it.unit_ar : it.unit;
+  if (!ar && q > 1) unit = /(tbsp|tsp)$/.test(unit) ? unit : /half$/.test(unit) ? unit.slice(0, -4) + "halves"
+                        : /(tomato|potato)$/.test(unit) ? unit + "es" : unit + "s";
+  return `${qty} ${unit}`;
+}
+
+function setGrams(mi, ii, v) {
+  const it = plan.days[dayIdx].meals[mi].items[ii];
+  it.grams = Math.max(0, +v || 0);
+  if (it.unit_g) it.household = household(it);
+  dirty = true; recompute(); renderPlan();
+}
+function removeItem(mi, ii) {
+  plan.days[dayIdx].meals[mi].items.splice(ii, 1); dirty = true; recompute(); renderPlan();
+}
+async function addItem(mi) {
+  const q = prompt("Food to add (English, e.g. 'apple raw', 'rice white cooked'):"); if (!q) return;
+  const grams = +prompt("Grams:", "100"); if (!grams) return;
+  try {
+    const f = await api(`/api/food?q=${encodeURIComponent(q)}`);
+    plan.days[dayIdx].meals[mi].items.push({ food:q, search_term:q, grams, household:`${grams} g`,
+      matched:f.description, fdc_id:f.fdc_id, per_100g:f.per_100g, flags:[] });
+    dirty = true; recompute(); renderPlan();
+  } catch (e) { alert(e.message); }
+}
+
+function diffCell(label, actual, target, unit) {
+  const pct = target ? Math.round((actual - target) / target * 100) : 0;
+  const cls = Math.abs(pct) <= (label === "Calories" ? 5 : 10) ? "ok" : "off";
+  return `<div><b>${label}</b><br>${Math.round(actual)}${unit} / ${Math.round(target)}${unit}
+          <span class="${cls}">(${pct > 0 ? "+" : ""}${pct}%)</span></div>`;
+}
+
+function renderPlan() {
+  const el = $("#planBody"); if (!el || !plan) return;
+  const d = plan.days[dayIdx], t = plan.targets;
+  el.innerHTML = `
+    <div class="tabs">${plan.days.map((x, i) => `<button class="${i === dayIdx ? "on" : ""}" onclick="dayIdx=${i};renderPlan()">Day ${x.day}</button>`).join("")}</div>
+    ${d.meals.map((m, mi) => `
+      <div class="meal-h"><span><b>${esc(m.name)}</b> ${m.time ? `<span class="muted">· ${esc(m.time)}</span>` : ""} — ${esc(m.title)}</span>
+        <span class="muted">${Math.round(m.totals.calories)} kcal · P ${m.totals.protein_g} · C ${m.totals.carbs_g} · F ${m.totals.fat_g}</span></div>
+      <table><thead><tr><th>Food</th><th>Measure</th><th>Grams</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th></th></tr></thead><tbody>
+      ${m.items.map((it, ii) => `<tr>
+        <td dir="auto">${esc(it.food)}<div class="matched">${it.matched ? "USDA: " + esc(it.matched) : "⚠ no USDA match"}</div>
+            ${(it.flags || []).map(f => `<div class="flag">${esc(f)}</div>`).join("")}</td>
+        <td dir="auto">${esc(it.household)}</td>
+        <td><input class="g" type="number" min="0" value="${it.grams}" onchange="setGrams(${mi},${ii},this.value)" /></td>
+        <td>${it.nutrients ? Math.round(it.nutrients.calories) : "–"}</td>
+        <td>${it.nutrients?.protein_g ?? "–"}</td><td>${it.nutrients?.carbs_g ?? "–"}</td><td>${it.nutrients?.fat_g ?? "–"}</td>
+        <td><button class="x" title="Remove" onclick="removeItem(${mi},${ii})">✕</button></td></tr>`).join("")}
+      </tbody></table>
+      <button class="x" onclick="addItem(${mi})">+ add food</button>`).join("")}
+    <div class="bar">
+      ${diffCell("Calories", d.totals.calories, t.calories, "")}
+      ${diffCell("Protein", d.totals.protein_g, t.protein_g, "g")}
+      ${diffCell("Carbs", d.totals.carbs_g, t.carbs_g, "g")}
+      ${diffCell("Fat", d.totals.fat_g, t.fat_g, "g")}
+    </div>
+    <p class="muted">Fiber ${d.totals.fiber_g} g (target ${t.fiber_g ?? "–"}) · Sugar ${d.totals.sugar_g} g · Sodium ${Math.round(d.totals.sodium_mg)} mg</p>
+    <div class="row"><button class="primary" onclick="savePlan()" ${dirty ? "" : "disabled"}>${dirty ? "Save changes" : "Saved"}</button>
+      <button onclick="printPlan()">Print / PDF</button></div>`;
+}
+
+// ---------------- main render ----------------
+function field([k, label, type, cls]) {
+  const v = client[k] ?? "";
+  let input;
+  if (type.startsWith("select:")) {
+    input = `<select id="f_${k}" onchange="refreshCalc()">${type.slice(7).split(",").map(o =>
+      `<option value="${o}" ${String(v) === o ? "selected" : ""}>${o || "no"}</option>`).join("")}</select>`;
+  } else if (type === "textarea") {
+    input = `<textarea id="f_${k}" dir="auto">${esc(v)}</textarea>`;
+  } else {
+    input = `<input id="f_${k}" type="${type}" value="${esc(v)}" dir="auto" oninput="refreshCalc()" />`;
+  }
+  return `<label class="${cls || ""}">${label}${input}</label>`;
+}
+
+function render() {
+  if (!client) return;
+  $("#main").innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>${client.id ? esc(client.name) : "New client"}</h2>
+        <div class="row">${client.id ? `<button class="danger" onclick="deleteClient()">Delete</button>` : ""}
+        <button class="primary" onclick="saveClient()">Save client</button></div></div>
+      <div class="grid">${FIELDS.map(field).join("")}</div>
+    </div>
+    <div class="card"><h2>Assessment & targets</h2><div id="assess"></div>
+      <div class="row" style="margin-top:12px">
+        <select id="days">${[1,3,5,7].map(n => `<option value="${n}" ${n === 7 ? "selected" : ""}>${n} day${n > 1 ? "s" : ""}</option>`).join("")}</select>
+        <button id="genBtn" class="primary" onclick="generate()">Generate plan</button>
+        <span class="muted">Built from your <a href="/library">meal library</a>. Generate again for different meals.</span>
+      </div>
+    </div>
+    ${plans.length ? `<div class="card"><h2>Plans</h2><table><tbody>${plans.map(p => `
+      <tr><td>#${p.id}</td><td>${new Date(p.created).toLocaleString()}</td><td>${p.days} days</td><td>${Math.round(p.calories)} kcal</td>
+      <td style="text-align:right"><button onclick="openPlan(${p.id})">Open</button> <button class="x" onclick="deletePlan(${p.id})">✕</button></td></tr>`).join("")}
+      </tbody></table></div>` : ""}
+    ${plan ? `<div class="card" id="planCard"><h2>Plan #${plan.id} · ${plan.days.length} days · target ${Math.round(plan.targets.calories)} kcal</h2>
+      ${(plan.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
+      <div id="planBody"></div>
+      ${plan.notes?.length ? `<h2 style="margin-top:16px">Notes for the client</h2><ul dir="auto">${plan.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+      <p class="muted">Plan built from your meal library. Review it before sharing. Nutrient data: USDA FoodData Central.</p></div>` : ""}`;
+  renderAssessment(); renderPlan();
+}
+
+// ---------------- print ----------------
+function printPlan() {
+  const a = plan.assessment || {}, c = plan.client_snapshot || {}, t = plan.targets;
+  const rtl = plan.language === "Arabic" ? ` dir="rtl"` : "";
+  $("#print").innerHTML = `
+    <h1>${esc($("#clinic").value || "Personal Nutrition Plan")}</h1>
+    <p><b>${esc(c.name)}</b> · ${esc(c.age)} y · ${esc(c.height_cm)} cm · ${esc(c.weight_kg)} kg · Goal: ${esc(c.goal)}<br>
+    BMI ${a.bmi ?? "–"} · BMR ${a.bmr ?? "–"} kcal · TDEE ${a.tdee ?? "–"} kcal · Water ${a.water_l ?? "–"} L/day<br>
+    <b>Daily target:</b> ${Math.round(t.calories)} kcal · Protein ${Math.round(t.protein_g)} g · Carbs ${Math.round(t.carbs_g)} g · Fat ${Math.round(t.fat_g)} g
+    ${c.allergies ? `<br><b>Allergies:</b> ${esc(c.allergies)}` : ""}</p>
+    ${plan.days.map(d => `<div class="day"${rtl}><h2>Day ${d.day} · ${Math.round(d.totals.calories)} kcal</h2>
+      ${d.meals.map(m => `<h3>${esc(m.name)}${m.time ? " · " + esc(m.time) : ""}: ${esc(m.title)} <span class="muted">(${Math.round(m.totals.calories)} kcal)</span></h3>
+        <table><tbody>${m.items.map(it => `<tr><td>${esc(it.food)}</td><td>${esc(it.household)}</td><td>${it.grams} g</td></tr>`).join("")}</tbody></table>`).join("")}
+      </div>`).join("")}
+    ${plan.notes?.length ? `<h2>Notes</h2><ul${rtl}>${plan.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+    <p class="muted">Prepared ${new Date().toLocaleDateString()}</p>`;
+  window.print();
+}
+
+function toast(msg) {
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.cssText = "position:fixed;bottom:20px;right:20px;background:#1d2420;color:#fff;padding:10px 16px;border-radius:8px;z-index:9";
+  document.body.appendChild(t); setTimeout(() => t.remove(), 1800);
+}
+
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+loadClients();
+</script>
+</body>
+</html>

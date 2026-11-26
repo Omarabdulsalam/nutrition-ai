@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NutriAI – What's in your meal?</title>
+<style>
+  :root { --bg:#f6f7f4; --card:#fff; --ink:#1d2420; --muted:#6b756f; --accent:#2f7d4f; --line:#e3e7e2; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin:0 0 4px; font-size: 28px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  form { display:flex; gap:8px; }
+  textarea { flex:1; resize:vertical; min-height:56px; padding:12px; font:inherit; border:1px solid var(--line); border-radius:10px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:0 20px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:wait; }
+  .examples { margin:10px 0 24px; display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { background:#e8efe9; color:var(--accent); border-radius:99px; padding:4px 10px; font-size:13px; cursor:pointer; border:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .totals { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; }
+  .stat { text-align:center; }
+  .stat b { display:block; font-size:24px; }
+  .stat span { color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  td input { width:70px; padding:4px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+  .matched { color:var(--muted); font-size:12px; }
+  .err { color:#b3261e; }
+  .note { color:var(--muted); font-size:12px; }
+  @media (max-width:560px){ .totals{ grid-template-columns: repeat(2,1fr);} form{flex-direction:column;} button{padding:12px;} }
+</style>
+</head>
+<body>
+<main>
+  <h1>NutriAI</h1>
+  <p class="sub">List what you ate in simple English, separated by commas: an amount, then the food.
+    Amounts like "2", "1 cup", "150 g" or "a slice of" work. Correct the grams below if needed.</p>
+
+  <form id="f">
+    <textarea id="text" maxlength="500" placeholder="e.g. 2 scrambled eggs, 1 slice of toast, 1 tsp butter, 1 cup of milk"></textarea>
+    <button id="go" type="submit">Analyze</button>
+  </form>
+  <div class="examples">
+    <button class="chip" type="button">2 eggs, 1 pita, 1 tomato and 1 cucumber</button>
+    <button class="chip" type="button">1 cup rice, 150 g chicken breast, salad, 1 tbsp olive oil</button>
+    <button class="chip" type="button">1 bowl of oatmeal, 1 banana, 1 tbsp peanut butter</button>
+  </div>
+
+  <div id="out"></div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const KEYS = ["calories","protein_g","carbs_g","fat_g","fiber_g","sugar_g","sodium_mg"];
+let state = null;
+
+document.querySelectorAll(".chip").forEach(c => c.onclick = () => { $("#text").value = c.textContent; });
+
+$("#f").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("#text").value.trim();
+  if (!text) return;
+  $("#go").disabled = true; $("#go").textContent = "Checking…";
+  $("#out").innerHTML = "";
+  try {
+    const r = await fetch("/api/analyze", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ text }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Something went wrong");
+    state = data; render();
+  } catch (err) {
+    $("#out").innerHTML = `<div class="card err">${escapeHtml(err.message)}</div>`;
+  } finally {
+    $("#go").disabled = false; $("#go").textContent = "Analyze";
+  }
+};
+
+function recompute() {
+  const totals = Object.fromEntries(KEYS.map(k => [k, 0]));
+  state.items.forEach(it => {
+    if (!it.per_100g) return;
+    it.nutrients = {};
+    KEYS.forEach(k => {
+      const v = it.per_100g[k];
+      it.nutrients[k] = v == null ? null : Math.round(v * it.grams / 10) / 10;
+      if (v != null) totals[k] += it.nutrients[k];
+    });
+  });
+  state.totals = Object.fromEntries(KEYS.map(k => [k, Math.round(totals[k] * 10) / 10]));
+}
+
+function render() {
+  const t = state.totals;
+  const fmt = (v) => v == null ? "–" : v;
+  $("#out").innerHTML = `
+    <div class="card totals">
+      <div class="stat"><b>${Math.round(t.calories)}</b><span>kcal</span></div>
+      <div class="stat"><b>${t.protein_g}g</b><span>protein</span></div>
+      <div class="stat"><b>${t.carbs_g}g</b><span>carbs</span></div>
+      <div class="stat"><b>${t.fat_g}g</b><span>fat</span></div>
+    </div>
+    ${state.summary ? `<div class="card">${escapeHtml(state.summary)}</div>` : ""}
+    <div class="card">
+      <table>
+        <thead><tr><th>Food</th><th>Grams</th><th>kcal</th><th>P</th><th>C</th><th>F</th></tr></thead>
+        <tbody>
+          ${state.items.map((it, i) => `
+            <tr>
+              <td>${escapeHtml(it.name)}<div class="matched">${it.matched ? "USDA: " + escapeHtml(it.matched) : "No match found"}${it.estimated ? " · amount guessed (100 g), please check" : ""}</div></td>
+              <td><input type="number" min="0" step="1" value="${it.grams}" data-i="${i}" /></td>
+              <td>${fmt(it.nutrients?.calories)}</td>
+              <td>${fmt(it.nutrients?.protein_g)}</td>
+              <td>${fmt(it.nutrients?.carbs_g)}</td>
+              <td>${fmt(it.nutrients?.fat_g)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+      <p class="note">Fiber ${t.fiber_g}g · Sugar ${t.sugar_g}g · Sodium ${Math.round(t.sodium_mg)}mg.
+      Portions are estimates, so edit the grams to correct them. Data: ${escapeHtml(state.source)}. Not medical advice.</p>
+    </div>`;
+  document.querySelectorAll("td input").forEach(inp => inp.onchange = () => {
+    state.items[+inp.dataset.i].grams = Math.max(0, +inp.value || 0);
+    recompute(); render();
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+</script>
+</body>
+</html>
