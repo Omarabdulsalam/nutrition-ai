@@ -29,12 +29,15 @@
   .matched { color:var(--muted); font-size:12px; }
   .err { color:#b3261e; }
   .note { color:var(--muted); font-size:12px; }
-  @media (max-width:560px){ .totals{ grid-template-columns: repeat(2,1fr);} form{flex-direction:column;} button{padding:12px;} }
+  textarea, td input { font-size:16px; }   /* 16px stops iPhone zooming into fields */
+  .card { overflow-x:auto; }
+  @media (max-width:560px){ main{padding:20px 12px 48px;} h1{font-size:24px;} .totals{ grid-template-columns: repeat(2,1fr);} form{flex-direction:column;} button{padding:12px;} }
 </style>
 </head>
 <body>
 <main>
-  <h1>NutriAI</h1>
+  <a href="/" style="color:var(--accent);font-weight:600;text-decoration:none;display:inline-block;margin-bottom:12px">← Back</a>
+  <h1>Meal check</h1>
   <p class="sub">List what you ate in simple English, separated by commas: an amount, then the food.
     Amounts like "2", "1 cup", "150 g" or "a slice of" work. Correct the grams below if needed.</p>
 
@@ -66,6 +69,7 @@ $("#f").onsubmit = async (e) => {
   $("#out").innerHTML = "";
   try {
     const r = await fetch("/api/analyze", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ text }) });
+    if (r.status === 401) { location.href = "/login"; return; }
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || "Something went wrong");
     state = data; render();

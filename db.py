@@ -38,6 +38,27 @@ def init():
             created TEXT NOT NULL,
             updated TEXT NOT NULL
         );
+        -- client logins: one per client file
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
+            email TEXT NOT NULL UNIQUE,
+            phone TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            pw_version INTEGER NOT NULL DEFAULT 1,
+            created TEXT NOT NULL
+        );
+        -- questions from clients and the specialist's answers
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+            sender TEXT NOT NULL CHECK (sender IN ('client', 'admin')),
+            text TEXT NOT NULL,
+            read INTEGER NOT NULL DEFAULT 0,
+            created TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS messages_client ON messages(client_id);
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
         empty = c.execute("SELECT COUNT(*) FROM meals").fetchone()[0] == 0
     if empty:
@@ -94,6 +115,7 @@ def _plan(row, full=True):
     else:
         out["days"] = len(data.get("days", []))
         out["calories"] = data.get("targets", {}).get("calories")
+        out["shared"] = bool(data.get("shared"))
     return out
 
 
@@ -162,3 +184,77 @@ def save_meal(data, mid=None):
 def delete_meal(mid):
     with conn() as c:
         c.execute("DELETE FROM meals WHERE id = ?", (mid,))
+
+
+# ---------- settings ----------
+def get_setting(key, default=None):
+    with conn() as c:
+        r = c.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def set_setting(key, value):
+    with conn() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+
+
+# ---------- client accounts ----------
+def _account(row):
+    return dict(row) if row else None
+
+
+def get_account(aid=None, client_id=None, email=None, phone=None):
+    col, val = next((k, v) for k, v in (("id", aid), ("client_id", client_id),
+                                        ("email", email), ("phone", phone)) if v is not None)
+    with conn() as c:
+        return _account(c.execute(f"SELECT * FROM accounts WHERE {col} = ?", (val,)).fetchone())
+
+
+def create_account(client_id, email, phone, password_hash):
+    with conn() as c:
+        aid = c.execute("INSERT INTO accounts (client_id, email, phone, password_hash, created) VALUES (?,?,?,?,?)",
+                        (client_id, email, phone, password_hash, _now())).lastrowid
+    return get_account(aid=aid)
+
+
+def update_account(aid, email, phone, password_hash=None):
+    with conn() as c:
+        if password_hash:
+            c.execute("UPDATE accounts SET email=?, phone=?, password_hash=?, pw_version=pw_version+1 WHERE id=?",
+                      (email, phone, password_hash, aid))
+        else:
+            c.execute("UPDATE accounts SET email=?, phone=? WHERE id=?", (email, phone, aid))
+    return get_account(aid=aid)
+
+
+def delete_account(client_id):
+    with conn() as c:
+        c.execute("DELETE FROM accounts WHERE client_id = ?", (client_id,))
+
+
+# ---------- questions ----------
+def list_messages(client_id):
+    with conn() as c:
+        rows = c.execute("SELECT * FROM messages WHERE client_id = ? ORDER BY id", (client_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_message(client_id, sender, text):
+    with conn() as c:
+        c.execute("INSERT INTO messages (client_id, sender, text, created) VALUES (?,?,?,?)",
+                  (client_id, sender, text, _now()))
+
+
+def mark_read(client_id, sender):
+    """Mark messages written by `sender` as read (by the other side)."""
+    with conn() as c:
+        c.execute("UPDATE messages SET read = 1 WHERE client_id = ? AND sender = ? AND read = 0",
+                  (client_id, sender))
+
+
+def unread_counts(sender):
+    """{client_id: number of unread messages written by `sender`}"""
+    with conn() as c:
+        rows = c.execute("SELECT client_id, COUNT(*) n FROM messages WHERE sender = ? AND read = 0 "
+                         "GROUP BY client_id", (sender,)).fetchall()
+    return {r["client_id"]: r["n"] for r in rows}

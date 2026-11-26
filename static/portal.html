@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#2f7d4f" />
+<title>My nutrition plan</title>
+<style>
+  :root { --bg:#f5f6f3; --card:#fff; --ink:#1d2420; --muted:#6b756f; --accent:#2f7d4f; --accent2:#e8efe9;
+          --line:#e2e6e1; --bad:#b3261e; --warnbg:#fff5e5; --warn:#9a5b00; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); font-size:16px; }
+  header { position:sticky; top:0; z-index:5; background:var(--card); border-bottom:1px solid var(--line);
+           padding:10px 16px; padding-top:max(10px, env(safe-area-inset-top)); }
+  .top { max-width:960px; margin:0 auto; display:flex; align-items:center; gap:10px; }
+  .top .logo { width:34px; height:34px; border-radius:10px; background:var(--accent); color:#fff; display:flex; align-items:center;
+               justify-content:center; font-weight:700; flex:none; }
+  .top .who { flex:1; min-width:0; }
+  .top .who b { display:block; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .top .who span { font-size:13px; color:var(--muted); }
+  .btn { border:0; border-radius:10px; padding:10px 14px; font:inherit; font-size:15px; font-weight:600; cursor:pointer;
+         background:var(--accent2); color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .btn:disabled { opacity:.6; cursor:wait; }
+  nav.tabs { max-width:960px; margin:10px auto 0; display:flex; gap:6px; }
+  nav.tabs button, nav.tabs a { flex:1; border:0; background:none; padding:10px 6px; border-radius:10px; font:inherit; font-size:15px;
+        font-weight:600; color:var(--muted); cursor:pointer; text-decoration:none; text-align:center; position:relative; }
+  nav.tabs .on { background:var(--accent2); color:var(--accent); }
+  .badge { display:inline-block; min-width:20px; padding:1px 6px; border-radius:99px; background:var(--bad); color:#fff; font-size:12px; margin-left:4px; }
+  main { max-width:960px; margin:0 auto; padding:16px; padding-bottom:calc(90px + env(safe-area-inset-bottom)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:17px; margin:0 0 12px; }
+  .muted { color:var(--muted); }
+  .empty { text-align:center; padding:40px 16px; color:var(--muted); }
+  .empty .big { font-size:40px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .days { display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin:0 -4px 12px; padding-left:4px; scrollbar-width:thin; }
+  .days button { flex:none; border:1px solid var(--line); background:var(--card); border-radius:99px; padding:8px 16px; font:inherit;
+                 font-size:15px; cursor:pointer; color:var(--ink); }
+  .days button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .meal { border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:10px; background:var(--card); }
+  .meal-h { display:flex; justify-content:space-between; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .meal-h .slot { font-size:13px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.03em; }
+  .meal-h .kcal { font-size:14px; color:var(--muted); white-space:nowrap; }
+  .meal h3 { margin:2px 0 8px; font-size:17px; }
+  .meal ul { list-style:none; margin:0; padding:0; }
+  .meal li { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid var(--line); }
+  .meal li .amt { color:var(--muted); text-align:end; white-space:nowrap; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .stat { background:var(--bg); border-radius:12px; padding:12px 8px; text-align:center; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { font-size:13px; color:var(--muted); }
+  .notes li { margin:6px 0; }
+  select, input, textarea { font:inherit; font-size:16px; color:var(--ink); padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  label { display:block; font-size:14px; color:var(--muted); margin-bottom:12px; }
+  label input { display:block; width:100%; margin-top:6px; }
+  .chat { display:flex; flex-direction:column; gap:8px; max-height:55vh; overflow-y:auto; padding:4px; }
+  .msg { max-width:85%; padding:10px 12px; border-radius:14px; white-space:pre-wrap; word-wrap:break-word; }
+  .msg.client { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
+  .msg.admin { align-self:flex-start; background:var(--bg); border-bottom-left-radius:4px; }
+  .msg small { display:block; font-size:11px; opacity:.7; margin-top:4px; }
+  .send { display:flex; gap:8px; margin-top:12px; align-items:flex-end; }
+  .send textarea { flex:1; resize:none; min-height:48px; max-height:140px; }
+  .error { background:#fbeaea; color:var(--bad); border-radius:10px; padding:10px 12px; margin:10px 0; font-size:14px; }
+  .ok { background:var(--accent2); color:var(--accent); border-radius:10px; padding:10px 12px; margin:10px 0; font-size:14px; }
+  [hidden] { display:none !important; }
+  #print { display:none; }
+
+  /* phones: tabs move to the bottom like an app */
+  @media (max-width:640px) {
+    nav.tabs { position:fixed; left:0; right:0; bottom:0; margin:0; background:var(--card); border-top:1px solid var(--line);
+               padding:6px 8px; padding-bottom:max(6px, env(safe-area-inset-bottom)); gap:2px; z-index:6; }
+    nav.tabs button, nav.tabs a { font-size:13px; padding:8px 2px; }
+    nav.tabs .ico { display:block; font-size:20px; line-height:1.1; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .top .hide-sm { display:none; }
+    main { padding:12px; padding-bottom:calc(90px + env(safe-area-inset-bottom)); }
+  }
+  @media (min-width:641px) { nav.tabs .ico { margin-right:6px; } }
+
+  @media print {
+    body { background:#fff; font-size:12px; }
+    header, main, nav { display:none !important; }
+    #print { display:block; }
+    #print h1 { font-size:20px; margin:0; color:var(--accent); }
+    #print h2 { font-size:15px; margin:16px 0 6px; border-bottom:2px solid var(--accent); padding-bottom:4px; page-break-after:avoid; }
+    #print h3 { font-size:13px; margin:10px 0 2px; }
+    #print .day { page-break-inside:avoid; }
+    #print table { width:100%; border-collapse:collapse; }
+    #print td { padding:3px 4px; border-bottom:1px solid #ddd; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div class="logo">N</div>
+    <div class="who"><b id="clinic">My nutrition plan</b><span id="hello"></span></div>
+    <button class="btn" onclick="logout()">Log out</button>
+  </div>
+  <nav class="tabs">
+    <button data-tab="plan" class="on"><span class="ico">🍽️</span>My plan</button>
+    <button data-tab="targets"><span class="ico">🎯</span>My targets</button>
+    <button data-tab="questions"><span class="ico">💬</span>Questions<span id="unread"></span></button>
+    <a href="/quick"><span class="ico">🔍</span>Meal check</a>
+  </nav>
+</header>
+
+<main>
+  <section id="plan"></section>
+  <section id="targets" hidden></section>
+  <section id="questions" hidden>
+    <div class="card">
+      <h2>Ask your nutritionist</h2>
+      <p class="muted" style="margin-top:-6px">Questions about your plan, swaps, or how you feel. You'll get an answer here.</p>
+      <div class="chat" id="chat"></div>
+      <div id="chatErr" class="error" hidden></div>
+      <form class="send" id="sendForm">
+        <textarea id="msg" rows="2" maxlength="2000" dir="auto" placeholder="Write your question…"></textarea>
+        <button class="btn primary" id="sendBtn" type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<div id="print"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let me = null, plan = null, dayIdx = 0, tab = "plan";
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 401) { location.href = "/login"; throw new Error("Please log in."); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  return data;
+}
+
+async function logout() { await api("/api/auth/logout", { method:"POST", body:{} }).catch(() => {}); location.href = "/login"; }
+
+// ---------- tabs ----------
+document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  tab = t;
+  document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  ["plan","targets","questions"].forEach(id => $("#" + id).hidden = id !== t);
+  if (t === "questions") loadChat();
+  try { localStorage.setItem("tab", t); } catch {}
+  window.scrollTo(0, 0);
+}
+
+// ---------- data ----------
+async function load() {
+  me = await api("/api/my");
+  const first = (me.client.name || "").split(" ")[0];
+  $("#hello").textContent = `Hi ${first}`;
+  if (me.clinic) { $("#clinic").textContent = me.clinic; document.title = me.clinic; }
+  setUnread(me.unread);
+  if (me.plans.length) await openPlan(me.plans[0].id); else renderPlan();
+  renderTargets();
+}
+
+function setUnread(n) { $("#unread").innerHTML = n ? `<span class="badge">${n}</span>` : ""; }
+
+async function openPlan(id) {
+  plan = await api(`/api/my/plans/${id}`);
+  dayIdx = Math.min(dayIdx, plan.days.length - 1);
+  renderPlan(); renderTargets();
+}
+
+const r0 = v => Math.round(v || 0);
+
+function renderPlan() {
+  const el = $("#plan");
+  if (!plan) {
+    el.innerHTML = `<div class="card empty"><div class="big">🥗</div>
+      <h2>Your plan is on its way</h2>
+      <p>Your nutritionist is preparing your personal meal plan. It will appear here when it's ready.</p>
+      <p>Have a question in the meantime? <a href="#" onclick="showTab('questions');return false">Ask here</a>.</p></div>`;
+    return;
+  }
+  const d = plan.days[dayIdx], t = plan.targets, rtl = plan.language === "Arabic" ? ' dir="rtl"' : "";
+  el.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">My meal plan</h2>
+        <div class="row">
+          ${me.plans.length > 1 ? `<select onchange="openPlan(+this.value)" aria-label="Choose plan">${me.plans.map(p =>
+            `<option value="${p.id}" ${p.id === plan.id ? "selected" : ""}>Plan from ${new Date(p.created).toLocaleDateString()}</option>`).join("")}</select>` : ""}
+          <button class="btn" onclick="printPlan()">🖨️ Print / PDF</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Daily goal: <b>${r0(t.calories)} kcal</b> · protein ${r0(t.protein_g)} g · carbs ${r0(t.carbs_g)} g · fat ${r0(t.fat_g)} g</p>
+    </div>
+    <div class="days">${plan.days.map((x, i) => `<button class="${i === dayIdx ? "on" : ""}" onclick="dayIdx=${i};renderPlan()">Day ${x.day}</button>`).join("")}</div>
+    <div${rtl}>
+    ${d.meals.map(m => `<div class="meal">
+        <div class="meal-h"><span class="slot">${esc(m.name)}${m.time ? " · " + esc(m.time) : ""}</span>
+          <span class="kcal">${r0(m.totals.calories)} kcal</span></div>
+        <h3>${esc(m.title)}</h3>
+        <ul>${m.items.map(it => `<li><span>${esc(it.food)}</span>
+          <span class="amt">${esc(it.household)}${it.household && !/\d\s*(g|غ)$/.test(it.household) ? ` · ${it.grams} g` : ""}</span></li>`).join("")}</ul>
+      </div>`).join("")}
+    </div>
+    <div class="card">
+      <h2>Day ${d.day} total</h2>
+      <div class="stats">
+        <div class="stat"><b>${r0(d.totals.calories)}</b><span>kcal</span></div>
+        <div class="stat"><b>${r0(d.totals.protein_g)} g</b><span>protein</span></div>
+        <div class="stat"><b>${r0(d.totals.carbs_g)} g</b><span>carbs</span></div>
+        <div class="stat"><b>${r0(d.totals.fat_g)} g</b><span>fat</span></div>
+      </div>
+    </div>
+    ${plan.notes?.length ? `<div class="card"><h2>Tips from your nutritionist</h2><ul class="notes"${rtl}>${plan.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}`;
+}
+
+function renderTargets() {
+  const el = $("#targets"), a = me.assessment, c = me.client;
+  const t = plan?.targets || a?.targets;
+  el.innerHTML = `
+    <div class="card">
+      <h2>My daily targets</h2>
+      ${t ? `<div class="stats">
+          <div class="stat"><b>${r0(t.calories)}</b><span>kcal / day</span></div>
+          <div class="stat"><b>${r0(t.protein_g)} g</b><span>protein</span></div>
+          <div class="stat"><b>${r0(t.carbs_g)} g</b><span>carbs</span></div>
+          <div class="stat"><b>${r0(t.fat_g)} g</b><span>fat</span></div>
+        </div>` : `<p class="muted">Your nutritionist will set your targets after completing your profile.</p>`}
+      ${a ? `<div class="stats" style="margin-top:8px">
+          <div class="stat"><b>${a.water_l} L</b><span>water / day</span></div>
+          <div class="stat"><b>${t?.fiber_g ? r0(t.fiber_g) + " g" : "–"}</b><span>fibre</span></div>
+          <div class="stat"><b>${a.bmi}</b><span>BMI · ${esc(a.bmi_category)}</span></div>
+          <div class="stat"><b>${a.healthy_weight_range_kg.join("–")}</b><span>healthy weight (kg)</span></div>
+        </div>` : ""}
+    </div>
+    <div class="card">
+      <h2>My profile</h2>
+      <p style="margin:0;line-height:1.8">
+        ${c.weight_kg ? `Weight: <b>${esc(c.weight_kg)} kg</b><br>` : ""}
+        ${c.height_cm ? `Height: <b>${esc(c.height_cm)} cm</b><br>` : ""}
+        ${c.goal ? `Goal: <b>${({lose:"lose weight",maintain:"maintain weight",gain:"gain weight"})[c.goal] || esc(c.goal)}</b><br>` : ""}
+        ${c.allergies ? `Allergies: <b>${esc(c.allergies)}</b><br>` : ""}
+        <span class="muted">Something wrong or changed? Tell your nutritionist in Questions.</span></p>
+    </div>
+    <div class="card">
+      <h2>My account</h2>
+      <p class="muted" style="margin-top:-4px">${esc(c.email || "")} · ${esc(c.phone || "")}</p>
+      <form id="pwForm">
+        <label>Current password <input type="password" name="current" autocomplete="current-password" required /></label>
+        <label>New password (at least 8 characters) <input type="password" name="new" autocomplete="new-password" minlength="8" required /></label>
+        <div id="pwMsg"></div>
+        <button class="btn primary" type="submit">Change password</button>
+      </form>
+    </div>`;
+  $("#pwForm").onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api("/api/my/password", { method:"POST", body:Object.fromEntries(new FormData(f)) });
+      f.reset(); $("#pwMsg").innerHTML = `<div class="ok">Password changed.</div>`;
+    } catch (err) { $("#pwMsg").innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+  };
+}
+
+// ---------- questions ----------
+async function loadChat() {
+  try { renderChat(await api("/api/my/messages")); setUnread(0); } catch (e) {}
+}
+function renderChat(msgs) {
+  const el = $("#chat");
+  el.innerHTML = msgs.length ? msgs.map(m => `<div class="msg ${m.sender}" dir="auto">${esc(m.text)}<small>${m.sender === "admin" ? "Nutritionist · " : ""}${new Date(m.created).toLocaleString()}</small></div>`).join("")
+    : `<p class="muted" style="text-align:center">No questions yet.</p>`;
+  el.scrollTop = el.scrollHeight;
+}
+$("#sendForm").onsubmit = async e => {
+  e.preventDefault();
+  const text = $("#msg").value.trim(); if (!text) return;
+  $("#sendBtn").disabled = true; $("#chatErr").hidden = true;
+  try { renderChat(await api("/api/my/messages", { method:"POST", body:{ text } })); $("#msg").value = ""; }
+  catch (err) { $("#chatErr").textContent = err.message; $("#chatErr").hidden = false; }
+  finally { $("#sendBtn").disabled = false; }
+};
+$("#msg").addEventListener("keydown", e => {   // Enter sends on computers; Shift+Enter for a new line
+  if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer:fine)").matches) { e.preventDefault(); $("#sendForm").requestSubmit(); }
+});
+
+// check for answers every 30 s while the page is open
+setInterval(async () => {
+  if (document.hidden) return;
+  if (tab === "questions") return loadChat();
+  try { const d = await api("/api/my"); setUnread(d.unread);
+        if (d.plans.length !== me.plans.length) { me = d; if (d.plans.length) openPlan(d.plans[0].id); } } catch {}
+}, 30000);
+
+// ---------- print ----------
+function printPlan() {
+  const t = plan.targets, rtl = plan.language === "Arabic" ? ` dir="rtl"` : "";
+  $("#print").innerHTML = `
+    <h1>${esc(me.clinic || "Personal Nutrition Plan")}</h1>
+    <p><b>${esc(me.client.name)}</b><br>
+    <b>Daily target:</b> ${r0(t.calories)} kcal · Protein ${r0(t.protein_g)} g · Carbs ${r0(t.carbs_g)} g · Fat ${r0(t.fat_g)} g
+    ${me.assessment ? ` · Water ${me.assessment.water_l} L/day` : ""}</p>
+    ${plan.days.map(d => `<div class="day"${rtl}><h2>Day ${d.day} · ${r0(d.totals.calories)} kcal</h2>
+      ${d.meals.map(m => `<h3>${esc(m.name)}${m.time ? " · " + esc(m.time) : ""}: ${esc(m.title)} (${r0(m.totals.calories)} kcal)</h3>
+        <table><tbody>${m.items.map(it => `<tr><td>${esc(it.food)}</td><td>${esc(it.household)}</td><td>${it.grams} g</td></tr>`).join("")}</tbody></table>`).join("")}
+      </div>`).join("")}
+    ${plan.notes?.length ? `<h2>Tips</h2><ul${rtl}>${plan.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+    <p style="color:#888">Printed ${new Date().toLocaleDateString()}</p>`;
+  window.print();
+}
+
+load().then(() => {
+  let t = "plan"; try { t = localStorage.getItem("tab") || "plan"; } catch {}
+  showTab(["plan","targets","questions"].includes(t) ? t : "plan");
+}).catch(e => { $("#plan").innerHTML = `<div class="card error">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

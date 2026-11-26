@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#2f7d4f" />
 <title>NutriAI – Diet Planner</title>
 <style>
   :root { --bg:#f5f6f3; --card:#fff; --ink:#1d2420; --muted:#6b756f; --accent:#2f7d4f; --accent2:#e8efe9;
@@ -56,7 +57,57 @@
   .ok { color:var(--accent); } .off { color:var(--bad); }
   .empty { text-align:center; padding:60px 20px; color:var(--muted); }
   #print { display:none; }
-  @media (max-width:800px){ .layout{grid-template-columns:1fr;} aside{border-right:0;border-bottom:1px solid var(--line);} .grid{grid-template-columns:1fr 1fr;} .stats{grid-template-columns:repeat(2,1fr);} header input{width:120px;} }
+
+  header a.lnk { color:var(--accent); font-weight:600; text-decoration:none; white-space:nowrap; }
+  .badge { display:inline-block; min-width:18px; padding:0 6px; border-radius:99px; background:var(--bad); color:#fff;
+           font-size:11px; font-weight:700; text-align:center; line-height:18px; }
+  .tag { display:inline-block; padding:0 7px; border-radius:99px; background:#e6f0ff; color:#1f4fa3; font-size:11px; font-weight:600; line-height:18px; }
+  .shared { display:inline-block; padding:0 7px; border-radius:99px; background:var(--accent2); color:var(--accent); font-size:11px; font-weight:600; line-height:18px; }
+  aside li { display:flex; gap:6px; align-items:flex-start; justify-content:space-between; }
+  aside li.on .tag, aside li.on .shared { background:rgba(255,255,255,.25); color:#fff; }
+  /* grid children may shrink below their content, so wide tables scroll inside their box instead of widening the page */
+  .layout > *, .grid > *, .bar > *, .stats > * { min-width:0; }
+  .grid input, .grid select, .grid textarea { width:100%; min-width:0; }
+  .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+  .scroll table { min-width:560px; }
+  .chat { display:flex; flex-direction:column; gap:8px; max-height:380px; overflow-y:auto; padding:4px; background:var(--bg); border-radius:10px; }
+  .msg { max-width:85%; padding:8px 11px; border-radius:12px; white-space:pre-wrap; word-wrap:break-word; }
+  .msg.client { align-self:flex-start; background:var(--card); border:1px solid var(--line); }
+  .msg.admin { align-self:flex-end; background:var(--accent); color:#fff; }
+  .msg small { display:block; font-size:11px; opacity:.7; margin-top:3px; }
+  .send { display:flex; gap:8px; margin-top:10px; align-items:flex-end; }
+  .send textarea { flex:1; min-height:44px; }
+  .back { display:none; }
+
+  /* tablets */
+  @media (max-width:1000px) {
+    .grid { grid-template-columns:repeat(2,1fr); }
+    .stats { grid-template-columns:repeat(3,1fr); }
+    .layout { grid-template-columns:220px 1fr; }
+    main { padding:14px; }
+  }
+  /* phones: show the client list OR one client, with a back button */
+  @media (max-width:700px) {
+    body { font-size:15px; }
+    input, select, textarea { font-size:16px; padding:10px; }   /* 16px stops iPhone zooming into fields */
+    button { padding:10px 14px; }
+    header { flex-wrap:wrap; padding:10px 12px; gap:8px 12px; }
+    header .sub { display:none; }
+    header .sp { display:none; }
+    header #clinic { order:9; width:100%; }
+    .layout { grid-template-columns:1fr; min-height:0; }
+    aside { border-right:0; }
+    body.has-client aside { display:none; }
+    body:not(.has-client) main { display:none; }
+    .back { display:inline-block; margin-bottom:10px; }
+    main { padding:12px; }
+    .grid { grid-template-columns:1fr 1fr; }
+    .grid .wide, .grid .full { grid-column:1/-1; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .bar { grid-template-columns:repeat(2,1fr); }
+    .card { padding:14px; }
+    .meal-h { flex-direction:column; gap:2px; }
+  }
 
   @media print {
     body { background:#fff; font-size:12px; }
@@ -72,11 +123,12 @@
 </head>
 <body>
 <header>
-  <h1>NutriAI</h1><span class="muted">Diet planner</span>
-  <a href="/library" style="color:var(--accent);font-weight:600;text-decoration:none;margin-left:12px">Meal library</a>
-  <a href="/quick" style="color:var(--accent);font-weight:600;text-decoration:none">Quick meal check</a>
+  <h1>NutriAI</h1><span class="muted sub">Diet planner</span>
+  <a class="lnk" href="/library">Meal library</a>
+  <a class="lnk" href="/quick">Meal check</a>
   <span class="sp"></span>
-  <input id="clinic" placeholder="Clinic / specialist name (for printouts)" />
+  <input id="clinic" placeholder="Clinic name (shown to clients & on printouts)" title="Clinic name" />
+  <button onclick="logout()">Log out</button>
 </header>
 
 <div class="layout">
@@ -95,14 +147,20 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const KEYS = ["calories","protein_g","carbs_g","fat_g","fiber_g","sugar_g","sodium_mg"];
 let clients = [], client = null, assessment = null, plans = [], plan = null, dayIdx = 0, dirty = false;
+let account = null, messages = [];
 
-// clinic name: per-browser convenience only
-try { $("#clinic").value = localStorage.getItem("clinic") || ""; } catch {}
-$("#clinic").oninput = e => { try { localStorage.setItem("clinic", e.target.value); } catch {} };
+// clinic name: saved on the server so clients see it too
+let clinicTimer;
+api("/api/settings").then(s => { $("#clinic").value = s.clinic || ""; }).catch(() => {});
+$("#clinic").oninput = e => {
+  clearTimeout(clinicTimer);
+  clinicTimer = setTimeout(() => api("/api/settings", { method:"PUT", body:{ clinic:e.target.value } }).catch(() => {}), 600);
+};
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 401) { location.href = "/login"; throw new Error("Please log in."); }
   if (r.status === 204) return null;
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
@@ -112,16 +170,27 @@ async function api(path, opts = {}) {
 // ---------------- clients ----------------
 async function loadClients() { clients = await api("/api/clients"); renderClients(); }
 
+async function logout() { await api("/api/auth/logout", { method:"POST", body:{} }).catch(() => {}); location.href = "/login"; }
+
 function renderClients() {
   const q = $("#search").value.toLowerCase();
-  $("#clients").innerHTML = clients.filter(c => c.name.toLowerCase().includes(q)).map(c => `
+  const total = clients.reduce((n, c) => n + (c.unread || 0), 0);
+  document.title = (total ? `(${total}) ` : "") + "NutriAI – Diet Planner";
+  $("#clients").innerHTML = clients.filter(c => c.name.toLowerCase().includes(q) || (c.phone || "").includes(q)).map(c => `
     <li class="${client && client.id === c.id ? "on" : ""}" onclick="openClient(${c.id})">
-      ${esc(c.name)}<small>${esc(c.goal || "")} · ${c.weight_kg || "?"} kg</small></li>`).join("")
+      <span>${esc(c.name)}<small>${c.new_signup ? "New sign-up · fill in profile" : `${esc(c.goal || "")} · ${c.weight_kg || "?"} kg`}</small></span>
+      <span>${c.unread ? `<span class="badge" title="Unanswered questions">${c.unread}</span>` : ""}
+        ${c.new_signup ? `<span class="tag">New</span>` : ""}</span></li>`).join("")
     || `<li class="muted">No clients yet</li>`;
 }
 
+function backToList() {
+  if (dirty && !confirm("Discard unsaved plan edits?")) return;
+  dirty = false; client = null; plan = null; document.body.classList.remove("has-client"); renderClients();
+}
+
 const FIELDS = [
-  ["name","Full name","text","wide"], ["phone","Phone","text"], ["sex","Sex","select:male,female"],
+  ["name","Full name","text","wide"], ["phone","Phone","text"], ["email","Email","text"], ["sex","Sex","select:male,female"],
   ["age","Age","number"], ["height_cm","Height (cm)","number"], ["weight_kg","Weight (kg)","number"], ["body_fat_pct","Body fat % (optional)","number"],
   ["activity","Activity","select:sedentary,light,moderate,active,very_active"], ["goal","Goal","select:lose,maintain,gain"],
   ["rate_kg_week","Rate (kg/week)","number"], ["meals_per_day","Meals per day","select:3,4,5,6"],
@@ -136,14 +205,18 @@ const FIELDS = [
 function newClient() {
   client = { sex:"female", activity:"light", goal:"lose", meals_per_day:"4", plan_language:"English", budget:"moderate",
              cuisine:"Lebanese / Mediterranean" };
-  plans = []; plan = null; assessment = null; render(); renderClients();
+  plans = []; plan = null; assessment = null; account = null; messages = [];
+  document.body.classList.add("has-client"); render(); renderClients(); window.scrollTo(0, 0);
 }
 
 async function openClient(id) {
   if (dirty && !confirm("Discard unsaved plan edits?")) return;
-  client = await api(`/api/clients/${id}`); plan = null; dirty = false;
-  plans = await api(`/api/clients/${id}/plans`);
-  render(); renderClients(); refreshCalc();
+  [client, plans, account, messages] = await Promise.all([api(`/api/clients/${id}`), api(`/api/clients/${id}/plans`),
+    api(`/api/clients/${id}/account`), api(`/api/clients/${id}/messages`)]);
+  plan = null; dirty = false;
+  const c = clients.find(c => c.id === id); if (c) c.unread = 0;   // opening the chat marks questions read
+  document.body.classList.add("has-client");
+  render(); renderClients(); refreshCalc(); window.scrollTo(0, 0);
 }
 
 function formData() {
@@ -163,7 +236,69 @@ async function saveClient() {
 async function deleteClient() {
   if (!confirm(`Delete ${client.name} and all their plans?`)) return;
   await api(`/api/clients/${client.id}`, { method:"DELETE" });
-  client = null; plan = null; await loadClients(); $("#main").innerHTML = `<div class="empty">Client deleted.</div>`;
+  client = null; plan = null; document.body.classList.remove("has-client");
+  await loadClients(); $("#main").innerHTML = `<div class="empty">Client deleted.</div>`;
+}
+
+// ---------------- client login ----------------
+function renderAccount() {
+  const el = $("#account"); if (!el) return;
+  if (!client.id) { el.innerHTML = `<p class="muted">Save the client first.</p>`; return; }
+  el.innerHTML = account
+    ? `<p style="margin-top:0">This client can log in with <b>${esc(account.email)}</b> or <b>${esc(account.phone)}</b>.
+         <span class="muted">Since ${new Date(account.created).toLocaleDateString()}</span></p>
+       <details><summary style="cursor:pointer;color:var(--accent);font-weight:600">Change login or reset password</summary>
+         ${accountForm(account.email, account.phone, "New password (leave empty to keep)")}</details>`
+    : `<p class="muted" style="margin-top:0">No login yet. The client can create one on the login page, or you can create it here
+         and send them the details.</p>${accountForm(client.email || "", client.phone || "", "Password (at least 8 characters)")}`;
+}
+
+function accountForm(email, phone, pwLabel) {
+  return `<div class="grid" style="margin-top:10px">
+      <label>Login email<input id="a_email" type="email" value="${esc(email)}" /></label>
+      <label>Login phone<input id="a_phone" type="tel" value="${esc(phone)}" /></label>
+      <label class="wide">${pwLabel}<input id="a_pw" type="text" autocomplete="off" /></label>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="primary" onclick="saveAccount()">${account ? "Save login" : "Create login"}</button>
+      ${account ? `<button class="danger" onclick="removeAccount()">Remove login</button>` : ""}</div>`;
+}
+
+async function saveAccount() {
+  try {
+    account = await api(`/api/clients/${client.id}/account`, { method:"POST",
+      body:{ email:$("#a_email").value, phone:$("#a_phone").value, password:$("#a_pw").value } });
+    renderAccount(); toast("Login saved");
+  } catch (e) { alert(e.message); }
+}
+
+async function removeAccount() {
+  if (!confirm("Remove this client's login? They won't be able to log in. Their file, plans and questions stay.")) return;
+  await api(`/api/clients/${client.id}/account`, { method:"DELETE" });
+  account = null; renderAccount();
+}
+
+// ---------------- questions ----------------
+function renderChat() {
+  const el = $("#chat"); if (!el) return;
+  el.innerHTML = messages.length ? messages.map(m => `<div class="msg ${m.sender}" dir="auto">${esc(m.text)}<small>${m.sender === "client" ? esc(client.name) + " · " : "You · "}${new Date(m.created).toLocaleString()}</small></div>`).join("")
+    : `<p class="muted" style="text-align:center">No questions from this client yet.</p>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendReply() {
+  const text = $("#reply").value.trim(); if (!text) return;
+  try { messages = await api(`/api/clients/${client.id}/messages`, { method:"POST", body:{ text } }); $("#reply").value = ""; renderChat(); }
+  catch (e) { alert(e.message); }
+}
+
+async function toggleShare(id, shared) {
+  if (dirty) { alert("Save your plan changes first."); return; }
+  try {
+    const p = await api(`/api/plans/${id}/share`, { method:"POST", body:{ shared } });
+    if (plan && plan.id === id) plan.shared = p.shared;
+    plans = await api(`/api/clients/${client.id}/plans`); render();
+    toast(shared ? "The client can now see this plan" : "Plan hidden from the client");
+  } catch (e) { alert(e.message); }
 }
 
 // ---------------- assessment ----------------
@@ -306,7 +441,7 @@ function renderPlan() {
     ${d.meals.map((m, mi) => `
       <div class="meal-h"><span><b>${esc(m.name)}</b> ${m.time ? `<span class="muted">· ${esc(m.time)}</span>` : ""} — ${esc(m.title)}</span>
         <span class="muted">${Math.round(m.totals.calories)} kcal · P ${m.totals.protein_g} · C ${m.totals.carbs_g} · F ${m.totals.fat_g}</span></div>
-      <table><thead><tr><th>Food</th><th>Measure</th><th>Grams</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th></th></tr></thead><tbody>
+      <div class="scroll"><table><thead><tr><th>Food</th><th>Measure</th><th>Grams</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th></th></tr></thead><tbody>
       ${m.items.map((it, ii) => `<tr>
         <td dir="auto">${esc(it.food)}<div class="matched">${it.matched ? "USDA: " + esc(it.matched) : "⚠ no USDA match"}</div>
             ${(it.flags || []).map(f => `<div class="flag">${esc(f)}</div>`).join("")}</td>
@@ -315,7 +450,7 @@ function renderPlan() {
         <td>${it.nutrients ? Math.round(it.nutrients.calories) : "–"}</td>
         <td>${it.nutrients?.protein_g ?? "–"}</td><td>${it.nutrients?.carbs_g ?? "–"}</td><td>${it.nutrients?.fat_g ?? "–"}</td>
         <td><button class="x" title="Remove" onclick="removeItem(${mi},${ii})">✕</button></td></tr>`).join("")}
-      </tbody></table>
+      </tbody></table></div>
       <button class="x" onclick="addItem(${mi})">+ add food</button>`).join("")}
     <div class="bar">
       ${diffCell("Calories", d.totals.calories, t.calories, "")}
@@ -346,6 +481,9 @@ function field([k, label, type, cls]) {
 function render() {
   if (!client) return;
   $("#main").innerHTML = `
+    <button class="back" onclick="backToList()">← All clients</button>
+    ${client.new_signup ? `<div class="warn">This client signed up themselves. Fill in their profile (age, height, weight, goal…),
+      save, then generate and share a plan.</div>` : ""}
     <div class="card">
       <div class="row" style="justify-content:space-between"><h2>${client.id ? esc(client.name) : "New client"}</h2>
         <div class="row">${client.id ? `<button class="danger" onclick="deleteClient()">Delete</button>` : ""}
@@ -359,16 +497,32 @@ function render() {
         <span class="muted">Built from your <a href="/library">meal library</a>. Generate again for different meals.</span>
       </div>
     </div>
-    ${plans.length ? `<div class="card"><h2>Plans</h2><table><tbody>${plans.map(p => `
+    ${plans.length ? `<div class="card"><h2>Plans</h2>
+      <p class="muted" style="margin-top:-6px">The client only sees plans you share.</p>
+      <div class="scroll"><table><tbody>${plans.map(p => `
       <tr><td>#${p.id}</td><td>${new Date(p.created).toLocaleString()}</td><td>${p.days} days</td><td>${Math.round(p.calories)} kcal</td>
-      <td style="text-align:right"><button onclick="openPlan(${p.id})">Open</button> <button class="x" onclick="deletePlan(${p.id})">✕</button></td></tr>`).join("")}
-      </tbody></table></div>` : ""}
-    ${plan ? `<div class="card" id="planCard"><h2>Plan #${plan.id} · ${plan.days.length} days · target ${Math.round(plan.targets.calories)} kcal</h2>
+      <td>${p.shared ? `<span class="shared">✓ Shared</span>` : `<span class="muted">Not shared</span>`}</td>
+      <td style="text-align:right;white-space:nowrap"><button onclick="openPlan(${p.id})">Open</button>
+        <button onclick="toggleShare(${p.id}, ${!p.shared})">${p.shared ? "Unshare" : "Share"}</button>
+        <button class="x" onclick="deletePlan(${p.id})" title="Delete plan">✕</button></td></tr>`).join("")}
+      </tbody></table></div></div>` : ""}
+    ${client.id ? `<div class="card"><h2>Questions</h2>
+      <div class="chat" id="chat"></div>
+      <div class="send"><textarea id="reply" rows="2" dir="auto" placeholder="Write your answer…"></textarea>
+        <button class="primary" onclick="sendReply()">Send</button></div></div>
+    <div class="card"><h2>Client login</h2><div id="account"></div></div>` : ""}
+    ${plan ? `<div class="card" id="planCard">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Plan #${plan.id} · ${plan.days.length} days · target ${Math.round(plan.targets.calories)} kcal</h2>
+        ${plan.shared ? `<span class="row"><span class="shared">✓ The client can see this plan</span>
+            <button onclick="toggleShare(${plan.id}, false)">Unshare</button></span>`
+          : `<button class="primary" onclick="toggleShare(${plan.id}, true)" ${dirty ? "disabled title='Save your changes first'" : ""}>Share with client</button>`}
+      </div><div style="height:10px"></div>
       ${(plan.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
       <div id="planBody"></div>
       ${plan.notes?.length ? `<h2 style="margin-top:16px">Notes for the client</h2><ul dir="auto">${plan.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
       <p class="muted">Plan built from your meal library. Review it before sharing. Nutrient data: USDA FoodData Central.</p></div>` : ""}`;
-  renderAssessment(); renderPlan();
+  renderAssessment(); renderPlan(); renderChat(); renderAccount();
 }
 
 // ---------------- print ----------------
@@ -399,6 +553,20 @@ function toast(msg) {
 
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 loadClients();
+
+// new questions and sign-ups show up without reloading the page
+setInterval(async () => {
+  if (document.hidden) return;
+  try {
+    clients = await api("/api/clients");
+    if (client?.id) {
+      const fresh = await api(`/api/clients/${client.id}/messages`);
+      if (fresh.length !== messages.length) { messages = fresh; renderChat(); }
+      const c = clients.find(c => c.id === client.id); if (c) c.unread = 0;
+    }
+    renderClients();
+  } catch {}
+}, 30000);
 </script>
 </body>
 </html>
